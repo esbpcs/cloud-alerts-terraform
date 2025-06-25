@@ -1,0 +1,188 @@
+---
+# GKE Workload Health: Container Health & Saturation
+- display_name: "GKE: Container Constantly Restarting (Critical)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** A container is restarting more than 5 times in the last hour.
+      **Impact:** The application is likely in a crash loop (CrashLoopBackOff) or
+      being killed by the runtime (OOMKilled). The service is unhealthy and likely
+      unavailable.
+      **Playbook:** [GCP Docs for Troubleshooting GKE Workloads](
+      https://cloud.google.com/kubernetes-engine/docs/how-to/troubleshooting)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Restart rate > 5 per hour"
+      condition_threshold:
+        filter: 'metric.type="kubernetes.io/container/restart_count" AND resource.type="k8s_container"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.001388 # ~5 restarts per hour (rate/sec)
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_RATE"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.cluster_name"
+              - "resource.label.namespace_name"
+              - "resource.label.pod_name"
+              - "resource.label.container_name"
+
+---
+- display_name: "GKE: Container CPU Throttling (Warning)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** A container's CPU usage is consistently high against its limit,
+      indicating it is likely being throttled.
+      **Impact:** Application performance is being artificially slowed down. The
+      container may need a higher CPU limit.
+      **Playbook:** [GCP Docs for Container Metrics](
+      https://cloud.google.com/monitoring/api/metrics_gcp#gcp-kubernetes)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "CPU limit utilization > 85% for 15m"
+      condition_threshold:
+        filter: 'metric.type="kubernetes.io/container/cpu/limit_utilization" AND resource.type="k8s_container"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.85 # 85% of CPU limit
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.cluster_name"
+              - "resource.label.namespace_name"
+              - "resource.label.pod_name"
+              - "resource.label.container_name"
+
+---
+- display_name: "GKE: Container Memory Nearing Limit (Warning)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** A container's memory usage is consistently high against its
+      limit.
+      **Impact:** The container is at high risk of being terminated by Kubernetes
+      (OOMKilled) if it exceeds its memory limit.
+      **Playbook:** [GCP Docs for Container Metrics](
+      https://cloud.google.com/monitoring/api/metrics_gcp#gcp-kubernetes)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Memory limit utilization > 85% for 15m"
+      condition_threshold:
+        filter: 'metric.type="kubernetes.io/container/memory/limit_utilization" AND resource.type="k8s_container"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.85 # 85% of memory limit
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.cluster_name"
+              - "resource.label.namespace_name"
+              - "resource.label.pod_name"
+              - "resource.label.container_name"
+
+---
+# GKE Cluster Health: Node Status and Saturation
+- display_name: "GKE: Node Not Ready (Critical)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** A GKE node has stopped reporting a 'Ready' status for over 15
+      minutes.
+      **Impact:** The node is not available to run pods. Any workloads on that
+      node are unavailable, and new pods cannot be scheduled on it, reducing
+      cluster capacity.
+      **Playbook:** [GCP Docs for Troubleshooting GKE Nodes](
+      https://cloud.google.com/kubernetes-engine/docs/how-to/troubleshooting-node-issues)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Node has not reported a 'Ready' status for 15m"
+      condition_absent:
+        filter: 'metric.type="kubernetes.io/node/status" AND resource.type="k8s_node" AND metric.label.status="ready"'
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_COUNT"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.cluster_name"
+              - "resource.label.node_name"
+
+---
+# GKE Saturation: High Node CPU Saturation
+- display_name: "GKE: High Node CPU Saturation (Warning)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** The cluster's overall CPU resource pressure is high. More than
+      85% of allocatable CPU across all nodes is in use.
+      **Impact:** There is limited spare CPU capacity in the cluster. New pods may
+      be slow to schedule, and autoscaling events may be slow to respond.
+      **Playbook:** [GCP Docs for Cluster Troubleshooting](
+      https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-troubleshooting)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Allocatable CPU utilization > 85% for 30m"
+      condition_threshold:
+        filter: 'metric.type="kubernetes.io/node/cpu/allocatable_utilization" AND resource.type="k8s_node"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.85 # 85% utilization
+        duration: "1800s" # 30 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.cluster_name"
+
+---
+# GKE Workload Health: Persistent Volume Saturation
+- display_name: "GKE: Persistent Volume Low Disk Space (Warning)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** A Persistent Volume used by a pod is over 80% full.
+      **Impact:** The pod may soon be unable to write data, which can cause the
+      application to fail.
+      **Playbook:** [GCP Docs for Persistent Volumes](
+      https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Volume utilization > 80% for 1h"
+      condition_threshold:
+        filter: 'metric.type="kubernetes.io/pod/volume/utilization" AND resource.type="k8s_pod"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 80 # 80% used
+        duration: "3600s" # 1 hour
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "600s" # 10 minutes
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.cluster_name"
+              - "resource.label.namespace_name"
+              - "resource.label.pod_name"
+              - "metric.label.volume_name"

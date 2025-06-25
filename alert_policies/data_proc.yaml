@@ -1,0 +1,121 @@
+---
+# Dataproc Job Health: Failed Jobs
+- display_name: "Dataproc: Job Failed (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** A Dataproc job has failed.
+      **Impact:** The data processing task did not complete successfully.
+      This could impact downstream data availability, reports, and models.
+      **Playbook:** [GCP Docs for Dataproc Job Monitoring](
+      https://cloud.google.com/dataproc/docs/guides/monitoring)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Sum of failed jobs > 0"
+      condition_threshold:
+        filter: 'metric.type="dataproc.googleapis.com/cluster/job/failed_count" AND resource.type="cloud_dataproc_cluster"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0 # Any failed job
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_DELTA"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.cluster_name"
+              - "resource.label.region"
+
+---
+# Dataproc Cluster Health: Failed Nodes
+- display_name: "Dataproc: Node Failed (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** A node within a Dataproc cluster has failed.
+      **Impact:** The cluster's processing capacity is reduced. Running jobs may
+      fail or experience significant performance degradation.
+      **Playbook:** [GCP Docs for Diagnosing Cluster Problems](
+      https://cloud.google.com/dataproc/docs/guides/diagnose-cluster)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Sum of failed nodes > 0"
+      condition_threshold:
+        filter: 'metric.type="dataproc.googleapis.com/cluster/nodes/failed_count" AND resource.type="cloud_dataproc_cluster"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0 # Any failed node
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_DELTA"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.cluster_name"
+              - "resource.label.region"
+
+---
+# Dataproc Saturation: HDFS Storage Utilization
+- display_name: "Dataproc: High HDFS Storage Utilization (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The HDFS storage utilization on a cluster has exceeded 80%.
+      **Impact:** The cluster is approaching its HDFS storage limit. If it
+      becomes full, jobs will fail.
+      **Playbook:** [GCP Docs for Managing HDFS Storage](
+      https://cloud.google.com/dataproc/docs/concepts/configuring-clusters/hdfs-storage)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "HDFS utilization > 80% for 30m"
+      condition_threshold:
+        filter: 'metric.type="dataproc.googleapis.com/cluster/hdfs/storage_utilization" AND resource.type="cloud_dataproc_cluster"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.8 # 80% HDFS utilization
+        duration: "1800s" # 30 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "300s" # 5 minutes
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.cluster_name"
+              - "resource.label.region"
+
+---
+# Dataproc Saturation: Pending YARN Memory
+- display_name: "Dataproc: High Pending YARN Memory (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The amount of YARN memory pending allocation is high,
+      suggesting the cluster is saturated.
+      **Impact:** Jobs are likely queued and waiting for resources, leading to
+      longer processing times. The cluster may be undersized for the current
+      workload.
+      **Playbook:** [GCP Docs for Dataproc Capacity Planning](
+      https://cloud.google.com/dataproc/docs/concepts/configuring-clusters/cluster-capacity)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Pending YARN memory > 10GB for 15m"
+      condition_threshold:
+        filter: 'metric.type="dataproc.googleapis.com/cluster/yarn/pending_memory_size" AND resource.type="cloud_dataproc_cluster"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 10000000000 # 10GB in bytes
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.cluster_name"
+              - "resource.label.region"

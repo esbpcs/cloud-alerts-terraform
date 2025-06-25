@@ -1,0 +1,190 @@
+---
+# GCE Availability: Instance Down
+- display_name: "GCE: Instance Down (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** A VM instance has stopped sending uptime data for over 10 minutes.
+      **Impact:** The instance is considered down, crashed, or has lost network connectivity. It is not serving traffic.
+      **Immediate Checks:**
+      1. Check GCP console for instance status and any ongoing zonal/regional issues.
+      2. Attempt to SSH into the instance.
+      3. Review instance serial console output for boot/crash messages.
+      **Playbook:** [GCP Docs for Troubleshooting VM Instances](https://cloud.google.com/compute/docs/troubleshooting/troubleshooting-instances)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "No uptime data for 10m"
+      condition_absent:
+        filter: 'metric.type="compute.googleapis.com/instance/uptime" AND resource.type="gce_instance"'
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_COUNT"
+            group_by_fields:
+              - "resource.label.instance_id"
+              - "resource.label.zone"
+
+---
+# GCE Saturation: High CPU Utilization
+- display_name: "GCE: High CPU Utilization (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The CPU utilization for a VM instance has exceeded 80% for over 15 minutes.
+      **Impact:** The instance is under heavy load and may be slow to respond. Performance for users/applications may be degraded.
+      **Investigation Steps:**
+      1. Identify top processes consuming CPU on the instance (e.g., using `top`, `htop`).
+      2. Check application logs for errors or unusual activity.
+      3. Review recent code deployments or configuration changes.
+      4. Consider if the instance requires vertical scaling (larger machine type) or horizontal scaling (more instances).
+      **Playbook:** [GCP Docs for GCE CPU Metrics](https://cloud.google.com/monitoring/api/metrics_gcp#gcp-compute)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "CPU utilization > 80% for 15m"
+      condition_threshold:
+        filter: 'metric.type="compute.googleapis.com/instance/cpu/utilization" AND resource.type="gce_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.8 # 80% CPU utilization
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance_id"
+              - "resource.label.zone"
+
+---
+# GCE Saturation: High Memory Utilization (Requires Ops Agent)
+- display_name: "GCE: High Memory Utilization (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The memory utilization on a VM instance has exceeded 95% for over 10 minutes.
+      **Impact:** The instance is at high risk of OOM (Out Of Memory) errors, which can cause processes to crash or the entire VM to become unresponsive.
+      **NOTE:** This alert requires the Google Cloud Ops Agent to be installed on the VM.
+      **Investigation Steps:**
+      1. Identify top memory-consuming processes (e.g., `top`, `ps aux --sort=-%mem`).
+      2. Check for memory leaks in applications.
+      3. Review application logs for memory-related errors.
+      4. Consider if the instance requires vertical scaling or memory optimization.
+      **Playbook:** [GCP Docs for Ops Agent Memory Metrics](https://cloud.google.com/monitoring/api/metrics_agent#agent-memory)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Memory utilization > 95% for 10m"
+      condition_threshold:
+        filter: 'metric.type="agent.googleapis.com/memory/percent_used" AND resource.type="gce_instance" AND metric.label.state="used"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 95 # 95% memory usage
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance_id"
+              - "resource.label.zone"
+
+---
+# GCE Saturation: Low Disk Space (Requires Ops Agent)
+- display_name: "GCE: Low Disk Space (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** A disk partition on a VM instance is over 80% full.
+      **Impact:** The instance may soon run out of disk space, which can cause applications to fail, logs to stop writing, or the OS to become unstable.
+      **NOTE:** This alert requires the Google Cloud Ops Agent to be installed on the VM.
+      **Playbook:** [GCP Docs for Ops Agent Disk Metrics](https://cloud.google.com/monitoring/api/metrics_agent#agent-disk)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Disk space used > 80% for 1h"
+      condition_threshold:
+        filter: 'metric.type="agent.googleapis.com/disk/percent_used" AND resource.type="gce_instance" AND metric.label.state="used"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 80 # 80% disk usage
+        duration: "3600s" # 1 hour
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "600s" # 10 minutes
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance_id"
+              - "resource.label.zone"
+              - "metric.label.device"
+
+---
+# GCE Integrity: Shielded VM Boot Validation Failure
+- display_name: "GCE Shielded VM: Boot Integrity Failure (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** A Shielded VM has failed its early boot integrity validation.
+      **Impact:** This is a critical security finding. It indicates that the VM's bootloader or kernel may have been tampered with or compromised. The instance should be considered insecure.
+      **Playbook:** [GCP Docs for Shielded VM Monitoring](https://cloud.google.com/compute/docs/shielded-vm/monitoring)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Early boot validation status is not 'success'"
+      condition_threshold:
+        filter: 'metric.type="compute.googleapis.com/instance/integrity/early_boot_validation_status" AND resource.type="gce_instance"'
+        comparison: "COMPARISON_LT" # Less than threshold
+        threshold_value: 1 # Not 'success'
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MAX"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.instance_id"
+              - "resource.label.zone"
+
+---
+# GCE Network: High Received Bytes (Warning)
+- display_name: "GCE: High Network Received Bytes (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** A VM instance is receiving an unusually high rate of network
+      traffic (e.g., > 100 MB/s for over 5 minutes).
+      **Impact:** This could indicate an overloaded instance, a misconfiguration,
+      or potentially unwanted traffic (e.g., DDoS attempt). The threshold
+      (100 MB/s) is an EXAMPLE and should be adjusted based on expected workload.
+      **Playbook:**
+      1. Identify the source of the traffic using network flow logs or instance-level tools (iftop, nethogs).
+      2. Determine if the traffic is legitimate or malicious.
+      3. If legitimate, consider scaling up the instance or optimizing the application.
+      4. If malicious, apply firewall rules or Cloud Armor policies.
+      [GCP Docs for Network Metrics](https://cloud.google.com/monitoring/api/metrics_gcp#gcp-compute)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Network received bytes > 100 MB/s for 5m"
+      condition_threshold:
+        filter: 'metric.type="compute.googleapis.com/instance/network/received_bytes_count" AND resource.type="gce_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 104857600 # 100 MB/s in bytes per second
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_RATE"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance_id"
+              - "resource.label.zone"

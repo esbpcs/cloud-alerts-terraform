@@ -1,0 +1,275 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+        "durationString": {
+            "type": "string",
+            "pattern": "^[1-9]\\d*0s$"
+        }
+    },
+    "anyOf": [
+        {
+            "type": "object",
+            "required": [
+                "display_name",
+                "conditions"
+            ],
+            "properties": {
+                "display_name": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "combiner": {
+                    "type": "string",
+                    "enum": [
+                        "AND",
+                        "OR",
+                        "AND_WITH_MATCHING_RESOURCE"
+                    ]
+                },
+                "documentation": {
+                    "type": "object",
+                    "properties": {
+                        "content": {
+                            "type": "string"
+                        },
+                        "mime_type": {
+                            "type": "string",
+                            "enum": [
+                                "text/markdown",
+                                "text/plain"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "content",
+                        "mime_type"
+                    ],
+                    "additionalProperties": false
+                },
+                "conditions": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "display_name"
+                        ],
+                        "properties": {
+                            "display_name": {
+                                "type": "string"
+                            },
+                            "condition_threshold": {
+                                "type": "object",
+                                "required": [
+                                    "filter",
+                                    "comparison",
+                                    "threshold_value",
+                                    "duration"
+                                ],
+                                "properties": {
+                                    "filter": {
+                                        "type": "string"
+                                    },
+                                    "comparison": {
+                                        "type": "string"
+                                    },
+                                    "threshold_value": {
+                                        "type": [
+                                            "number",
+                                            "string"
+                                        ]
+                                    },
+                                    "duration": {
+                                        "$ref": "#/definitions/durationString"
+                                    },
+                                    "trigger": {
+                                        "type": "object",
+                                        "properties": {
+                                            "count": {
+                                                "type": "integer"
+                                            },
+                                            "percent": {
+                                                "type": "number"
+                                            }
+                                        },
+                                        "additionalProperties": false
+                                    },
+                                    "aggregations": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "alignment_period": {
+                                                    "$ref": "#/definitions/durationString"
+                                                },
+                                                "per_series_aligner": {
+                                                    "type": "string"
+                                                },
+                                                "cross_series_reducer": {
+                                                    "type": "string"
+                                                },
+                                                "group_by_fields": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            },
+                                            "additionalProperties": false
+                                        }
+                                    },
+                                    "denominator_filter": {
+                                        "type": "string"
+                                    },
+                                    "denominator_aggregations": {
+                                        "type": "array"
+                                    }
+                                },
+                                "additionalProperties": true
+                            },
+                            "condition_absent": {
+                                "type": "object",
+                                "required": [
+                                    "filter",
+                                    "duration"
+                                ],
+                                "properties": {
+                                    "filter": {
+                                        "type": "string"
+                                    },
+                                    "duration": {
+                                        "$ref": "#/definitions/durationString"
+                                    },
+                                    "trigger": {
+                                        "type": "object",
+                                        "properties": {
+                                            "count": {
+                                                "type": "integer"
+                                            },
+                                            "percent": {
+                                                "type": "number"
+                                            }
+                                        },
+                                        "additionalProperties": false
+                                    },
+                                    "aggregations": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "alignment_period": {
+                                                    "$ref": "#/definitions/durationString"
+                                                },
+                                                "per_series_aligner": {
+                                                    "type": "string"
+                                                },
+                                                "cross_series_reducer": {
+                                                    "type": "string"
+                                                },
+                                                "group_by_fields": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            },
+                                            "additionalProperties": false
+                                        }
+                                    }
+                                },
+                                "additionalProperties": true
+                            },
+                            "condition_matched_log": {
+                                "type": "object",
+                                "required": [
+                                    "filter"
+                                ],
+                                "properties": {
+                                    "filter": {
+                                        "type": "string"
+                                    },
+                                    "label_extractors": {
+                                        "type": "object"
+                                    }
+                                },
+                                "additionalProperties": true
+                            },
+                            "condition_monitoring_query_language": {
+                                "type": "object",
+                                "required": [
+                                    "query",
+                                    "duration"
+                                ],
+                                "properties": {
+                                    "query": {
+                                        "type": "string"
+                                    },
+                                    "duration": {
+                                        "$ref": "#/definitions/durationString"
+                                    },
+                                    "trigger": {
+                                        "type": "object",
+                                        "properties": {
+                                            "count": {
+                                                "type": "integer"
+                                            },
+                                            "percent": {
+                                                "type": "number"
+                                            }
+                                        },
+                                        "additionalProperties": false
+                                    },
+                                    "evaluation_missing_data": {
+                                        "type": "string"
+                                    }
+                                },
+                                "additionalProperties": true
+                            }
+                        },
+                        "minProperties": 2
+                    }
+                },
+                "user_labels": {
+                    "type": "object",
+                    "patternProperties": {
+                        "^[a-z][a-z0-9_-]{0,62}$": {
+                            "type": "string"
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "alert_strategy": {
+                    "type": "object",
+                    "properties": {
+                        "auto_close": {
+                            "$ref": "#/definitions/durationString"
+                        },
+                        "notification_rate_limit": {
+                            "type": "object",
+                            "properties": {
+                                "period": {
+                                    "$ref": "#/definitions/durationString"
+                                }
+                            },
+                            "required": [
+                                "period"
+                            ],
+                            "additionalProperties": false
+                        }
+                    },
+                    "additionalProperties": true
+                }
+            },
+            "additionalProperties": true
+        },
+        {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "$ref": "#/anyOf/0"
+            }
+        }
+    ]
+}

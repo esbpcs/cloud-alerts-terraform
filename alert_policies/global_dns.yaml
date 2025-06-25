@@ -1,0 +1,90 @@
+---
+# Cloud DNS Health: Server Failure (SERVFAIL) Errors
+- display_name: "Cloud DNS: Server Failure (SERVFAIL) Rate (Critical)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** A Cloud DNS zone is responding to queries with SERVFAIL errors.
+      **Impact:** Clients are unable to resolve DNS records in this zone, which can
+      lead to service outages. This may indicate a misconfiguration in the zone
+      file or an issue with the Cloud DNS service.
+      **Playbook:** [GCP Docs for Cloud DNS Troubleshooting](
+      https://cloud.google.com/dns/docs/troubleshooting)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Sum of SERVFAIL errors > 0"
+      condition_threshold:
+        filter: 'metric.type="dns.googleapis.com/query/error_count" AND resource.type="dns_query" AND metric.label.response_code="servfail"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0 # Any SERVFAIL error
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_SUM"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.zone_name"
+
+---
+# Cloud DNS Performance: High Resolution Latency
+- display_name: "Cloud DNS: High P99 Resolution Latency (Warning)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** The 99th percentile for DNS resolution latency has exceeded 100ms.
+      **Impact:** Applications and users are experiencing delays when looking up
+      records in this zone. This adds latency to the initial connection time for
+      all dependent services.
+      **Playbook:** [GCP Docs for Cloud DNS Overview](
+      https://cloud.google.com/dns/docs/overview)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "P99 total latency > 100ms for 15m"
+      condition_threshold:
+        filter: 'metric.type="dns.googleapis.com/query/total_latencies" AND resource.type="dns_query"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 100 # 100ms
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_99"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.zone_name"
+
+---
+# Cloud DNS Health: High Non-Existent Domain (NXDOMAIN) Rate
+- display_name: "Cloud DNS: High NXDOMAIN Rate (Warning)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** There is a high rate of queries for records that do not exist
+      (NXDOMAIN).
+      **Impact:** This is not necessarily an error but can indicate a
+      misconfiguration in an application, a deployment issue, or a potential
+      reconnaissance/DDoS attempt using random subdomains. Warrants investigation.
+      **Playbook:** [GCP Docs for Cloud DNS Troubleshooting](
+      https://cloud.google.com/dns/docs/troubleshooting)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Sum of NXDOMAIN errors > 100 per minute"
+      condition_threshold:
+        filter: 'metric.type="dns.googleapis.com/query/error_count" AND resource.type="dns_query" AND metric.label.response_code="nxdomain"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 100 # More than 100 NXDOMAIN per minute
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_RATE"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.zone_name"

@@ -1,0 +1,121 @@
+---
+# Cloud Run Jobs: Job Execution Failure (Critical)
+- display_name: "Cloud Run Job: Execution Failed (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** A Cloud Run Job execution has failed.
+      **Impact:** The intended task (e.g., data processing, report generation) did
+      not complete successfully. Downstream dependencies may be affected.
+      **Playbook:** [GCP Docs for Monitoring Job Executions](
+      https://cloud.google.com/run/docs/monitoring-jobs)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Sum of failed job executions > 0"
+      condition_threshold:
+        filter: 'metric.type="run.googleapis.com/job/execution_count" AND resource.type="cloud_run_job" AND metric.label.status="failed"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0 # Any failed execution
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_SUM"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.job_name"
+              - "resource.label.location"
+
+---
+# Cloud Run Jobs: Performance - Long Execution Time
+- display_name: "Cloud Run Job: Long Execution Time (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The P95 execution time for a job is longer than expected.
+      **Impact:** The job is taking more time and resources than planned,
+      potentially increasing costs or delaying downstream processes.
+      **NOTE:** The threshold (e.g., 30m) is a placeholder and MUST be adjusted
+      based on the specific job's expected runtime.
+      **Playbook:** [GCP Docs for Cloud Run Job Metrics](
+      https://cloud.google.com/run/docs/monitoring/metrics#job-metrics)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "P95 execution time > 30m"
+      condition_threshold:
+        filter: 'metric.type="run.googleapis.com/job/execution_latencies" AND resource.type="cloud_run_job"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 1800000 # 1,800,000 ms = 30 minutes
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "600s" # 10 minutes
+            per_series_aligner: "ALIGN_PERCENTILE_95"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.job_name"
+              - "resource.label.location"
+
+---
+# Cloud Run Jobs: Saturation - High Memory Utilization
+- display_name: "Cloud Run Job: High Memory Utilization (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The P95 memory utilization for a job's containers is very high.
+      **Impact:** The job may be at risk of failing with out-of-memory errors. It
+      could be a sign of inefficient code or under-provisioned resources.
+      **Playbook:** [GCP Docs for Cloud Run Container Metrics](
+      https://cloud.google.com/run/docs/monitoring/metrics#container-metrics)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "P95 memory utilization > 90% for 5m"
+      condition_threshold:
+        filter: 'metric.type="run.googleapis.com/job/container/memory/utilizations" AND resource.type="cloud_run_job"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.9 # 90% utilization
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_95"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.job_name"
+              - "resource.label.location"
+
+---
+# Cloud Run Jobs: Saturation - High CPU Utilization
+- display_name: "Cloud Run Job: High CPU Utilization (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The P95 CPU utilization for a job's containers is very high.
+      **Impact:** The job may be CPU-throttled, causing it to run longer and less
+      efficiently than expected.
+      **Playbook:** [GCP Docs for Cloud Run Container Metrics](
+      https://cloud.google.com/run/docs/monitoring/metrics#container-metrics)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "P95 CPU utilization > 90% for 5m"
+      condition_threshold:
+        filter: 'metric.type="run.googleapis.com/job/container/cpu/utilizations" AND resource.type="cloud_run_job"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.9 # 90% utilization
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_95"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.job_name"
+              - "resource.label.location"

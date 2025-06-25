@@ -1,0 +1,121 @@
+---
+# Cloud Functions: Execution Error Rate
+- display_name: "Cloud Functions: High Execution Error Rate (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The percentage of failed function executions has exceeded 2% over
+      the last 10 minutes.
+      **Impact:** A portion of function invocations are failing, which could impact
+      application logic and user experience.
+      **Playbook:** [GCP Docs for Cloud Functions Error Reporting](
+      https://cloud.google.com/error-reporting/docs/setup/cloud-functions)
+    mime_type: "text/markdown"
+  alert_strategy:
+    notification_rate_limit:
+      period: "3600s" # 1 hour between notifications
+    auto_close: "1800s" # Automatically close after 30 minutes
+  conditions:
+    - display_name: "Error rate > 2% for 10m"
+      condition_matched_log:
+        filter: |
+          resource.type="cloud_function"
+          severity="ERROR"
+
+---
+# Cloud Functions: High Execution Failures (Critical)
+- display_name: "Cloud Functions: High Execution Failures (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** A significant number of function executions are failing
+      (status='error').
+      **Impact:** Core application functionality is likely impaired.
+      **Playbook:** [GCP Docs for Monitoring Cloud Functions](
+      https://cloud.google.com/functions/docs/monitoring)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Sum of failed executions > 5"
+      condition_threshold:
+        filter: 'metric.type="cloudfunctions.googleapis.com/function/execution_count" AND resource.type="cloud_function" AND metric.label.status="error"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 5 # More than 5 errors
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_SUM"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.function_name"
+              - "resource.label.region"
+
+---
+# Cloud Functions Performance: High Execution Time
+- display_name: "Cloud Functions: High Execution Time (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The P99 execution time is approaching the function's timeout
+      limit.
+      **Impact:** Increased risk of function timeouts, which are treated as errors
+      and can cause unexpected application behavior.
+      **NOTE:** The threshold (e.g., 45s) MUST be adjusted based on the specific
+      function's configured timeout (e.g., 60s). This policy should be duplicated
+      for functions with different timeouts.
+      **Playbook:** [GCP Docs for Cloud Functions Metrics](
+      https://cloud.google.com/functions/docs/monitoring/metrics)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "P99 execution time > 45s for 5m"
+      condition_threshold:
+        filter: 'metric.type="cloudfunctions.googleapis.com/function/execution_times" AND resource.type="cloud_function"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 45000000000 # 45 seconds in nanoseconds
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_99"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.function_name"
+              - "resource.label.region"
+
+---
+# Cloud Functions Saturation: High Memory Usage
+- display_name: "Cloud Functions: High Memory Usage (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The P99 memory usage is approaching the function's configured
+      memory limit.
+      **Impact:** High risk of out-of-memory errors, which cause the function to
+      fail and restart.
+      **NOTE:** The threshold (e.g., 460MB for a 512MB function) MUST be adjusted
+      based on the specific function's configured memory.
+      **Playbook:** [GCP Docs for Cloud Functions Metrics](
+      https://cloud.google.com/functions/docs/monitoring/metrics)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "P99 memory usage > 460MB for 10m"
+      condition_threshold:
+        filter: 'metric.type="cloudfunctions.googleapis.com/function/user_memory_bytes" AND resource.type="cloud_function"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 482344960 # 460 MB in bytes
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_99"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.function_name"
+              - "resource.label.region"

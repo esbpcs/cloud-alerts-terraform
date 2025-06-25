@@ -1,0 +1,194 @@
+---
+# Bigtable Performance: Cluster CPU Load
+- display_name: "Bigtable: High CPU Load (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The average CPU load across the Bigtable cluster has exceeded 70% for over 15 minutes.
+      **Impact:** Read/write latency may increase. Performance is degrading. This is the recommended threshold for scaling up nodes.
+      **Playbook:** [GCP Docs for Bigtable CPU Metrics](https://cloud.google.com/bigtable/docs/monitoring-instance#cpu)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Average CPU load > 70% for 15m"
+      condition_threshold:
+        filter: 'metric.type="bigtable.googleapis.com/cluster/cpu_load" AND resource.type="bigtable_cluster"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.7 # 70% CPU usage
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance"
+              - "resource.label.cluster"
+
+---
+- display_name: "Bigtable: High CPU Load (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The CPU load on the HOTTEST NODE in the Bigtable cluster has exceeded 90% for over 5 minutes.
+      **Impact:** The cluster is overloaded. Latency is likely very high, and requests may be failing. Hotspotting is occurring.
+      **Playbook:** [GCP Docs for Investigating Bigtable Performance](https://cloud.google.com/bigtable/docs/investigating-performance)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Hottest node CPU load > 90% for 5m"
+      condition_threshold:
+        filter: 'metric.type="bigtable.googleapis.com/cluster/cpu_load_hottest_node" AND resource.type="bigtable_cluster"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.9 # 90% CPU usage
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance"
+              - "resource.label.cluster"
+
+---
+# Bigtable Performance: Server & Replication Latency
+- display_name: "Bigtable: High Server Latency (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The P99 latency for server requests has exceeded 50ms.
+      **Impact:** Client applications are experiencing slower-than-normal response times.
+      **Playbook:** [GCP Docs for Bigtable Latency Metrics](https://cloud.google.com/bigtable/docs/monitoring-instance#latency)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "P99 server latency > 50ms for 10m"
+      condition_threshold:
+        filter: 'metric.type="bigtable.googleapis.com/server/latencies" AND resource.type="bigtable_table"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 50 # 50 ms
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_99"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.instance"
+              - "resource.label.cluster"
+              - "resource.label.table"
+
+---
+- display_name: "Bigtable: High Replication Latency (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The P99 latency for multi-cluster replication has exceeded 30 seconds.
+      **Impact:** Reads in replica clusters may be returning significantly stale data. Data consistency is compromised.
+      **Playbook:** [GCP Docs for Bigtable Replication Monitoring](https://cloud.google.com/bigtable/docs/replication-overview#monitoring-replication)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "P99 replication latency > 30s for 5m"
+      condition_threshold:
+        filter: 'metric.type="bigtable.googleapis.com/replication/latency" AND resource.type="bigtable_table"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 30000 # 30 seconds (ms)
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_99"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.instance"
+              - "resource.label.cluster"
+
+---
+# Bigtable Errors & Availability
+- display_name: "Bigtable: Server Errors Detected (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** Server-side errors have been detected in a Bigtable table.
+      **Impact:** Client requests are failing. Data may not be readable or writable for the affected tables.
+      **Playbook:** [GCP Docs for Bigtable Client Libraries - Error Handling](https://cloud.google.com/bigtable/docs/best-practices#error-handling)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Sum of server errors > 0"
+      condition_threshold:
+        filter: 'metric.type="bigtable.googleapis.com/server/error_count" AND resource.type="bigtable_table"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0 # Any error
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_SUM"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.instance"
+              - "resource.label.cluster"
+              - "resource.label.table"
+
+---
+- display_name: "Bigtable: Cluster Has No Nodes (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** A Bigtable cluster is reporting zero nodes.
+      **Impact:** The cluster may have been deleted or is in a failed state. It is completely unavailable.
+      **Playbook:** [GCP Docs for Bigtable Instances](https://cloud.google.com/bigtable/docs/instances)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Node count < 1 for 10m"
+      condition_threshold:
+        filter: 'metric.type="bigtable.googleapis.com/cluster/node_count" AND resource.type="bigtable_cluster"'
+        comparison: "COMPARISON_LT" # Less than threshold
+        threshold_value: 1 # Fewer than 1 node
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MAX"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.instance"
+              - "resource.label.cluster"
+
+---
+# Bigtable Utilization
+- display_name: "Bigtable: High Storage Utilization (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The storage utilization for a cluster has exceeded 70%.
+      **Impact:** This is the recommended threshold to add more nodes. If it continues to grow, Bigtable may throttle writes to perform compactions, increasing latency.
+      **Playbook:** [GCP Docs for Bigtable Storage Metrics](https://cloud.google.com/bigtable/docs/monitoring-instance#storage)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Storage utilization > 70% for 1h"
+      condition_threshold:
+        filter: 'metric.type="bigtable.googleapis.com/cluster/storage_utilization" AND resource.type="bigtable_cluster"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.7 # 70% utilization
+        duration: "3600s" # 1 hour
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "600s" # 10 minutes
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance"
+              - "resource.label.cluster"

@@ -1,0 +1,61 @@
+---
+# Load Balancer Health: High Backend Error Rate (5xx)
+- display_name: "Load Balancer: High Backend 5xx Error Rate (Critical)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** The rate of 5xx errors from the backend services has exceeded 5%
+      of requests.
+      **Impact:** A significant portion of user requests are failing.
+      **Playbook:** [GCP Docs for Load Balancer Monitoring](
+      https://cloud.google.com/load-balancing/docs/monitoring)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Backend 5xx error ratio > 5% for 5m"
+      condition_monitoring_query_language:
+        query: |
+          fetch https_lb_rule
+          | {
+              metric 'loadbalancing.googleapis.com/https/backend_request_count'
+              | filter (metric.response_code_class == 500)
+              | align rate(1m)
+              | group_by [resource.forwarding_rule_name], [errors: sum(val())];
+              metric 'loadbalancing.googleapis.com/https/backend_request_count'
+              | align rate(1m)
+              | group_by [resource.forwarding_rule_name], [total: sum(val())]
+            }
+          | join
+          | value [error_ratio: val(0) / val(1)]
+          | condition val() > 0.05        # Error ratio > 5%
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+
+---
+# Load Balancer Performance: High Backend Latency
+- display_name: "Load Balancer: High Backend Latency (Warning)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** The P95 backend latency has exceeded 2 seconds.
+      **Impact:** Users are experiencing slower response times.
+      **Playbook:** [GCP Docs for Load Balancer Monitoring](
+      https://cloud.google.com/load-balancing/docs/monitoring)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "P95 backend latency > 2s for 10m"
+      condition_threshold:
+        filter: 'metric.type="loadbalancing.googleapis.com/https/backend_latencies" AND resource.type="https_lb_rule"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 2000 # 2 seconds (ms)
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_95"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.forwarding_rule_name"

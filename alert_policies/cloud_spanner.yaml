@@ -1,0 +1,88 @@
+---
+# Spanner Saturation: High CPU Utilization (REGIONAL INSTANCES)
+- display_name: "Spanner: High CPU Utilization - REGIONAL (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The total CPU utilization for a REGIONAL Spanner instance has
+      exceeded 65% for over 15 minutes.
+      **Impact:** This is the recommended threshold to begin scaling up. Read and
+      write latencies may increase if the load continues to rise.
+      **Playbook:** [GCP Docs for Investigating High CPU](
+      https://cloud.google.com/spanner/docs/investigating-high-cpu)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "CPU utilization > 65% for 15m"
+      condition_threshold:
+        filter: 'metric.type="spanner.googleapis.com/instance/cpu/utilization" AND resource.type="spanner_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.65 # 65% CPU usage
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance_id"
+
+---
+# Spanner Performance: High API Latency
+- display_name: "Spanner: High API Latency (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The P99 API request latency has exceeded 1 second.
+      **Impact:** Client applications are experiencing slower-than-normal response
+      times.
+      **Playbook:** [GCP Docs for Spanner Latency Metrics](
+      https://cloud.google.com/spanner/docs/latency-metrics)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "P99 API latency > 1s for 10m"
+      condition_threshold:
+        filter: 'metric.type="spanner.googleapis.com/api/request_latencies" AND resource.type="spanner_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 1000 # 1 second (ms)
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_99"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.instance_id"
+              - "metric.label.method"
+
+---
+# Spanner Saturation: High Storage Utilization
+- display_name: "Spanner: High Storage Utilization (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The instance storage utilization has exceeded 75%.
+      **Impact:** Approaching the storage limit. Performance may degrade as the
+      instance prepares to throttle writes.
+      **Playbook:** [GCP Docs for Storage Metrics](
+      https://cloud.google.com/spanner/docs/storage-metrics)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Storage utilization > 75%"
+      condition_threshold:
+        filter: 'metric.type="spanner.googleapis.com/instance/storage/utilization" AND resource.type="spanner_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.75 # 75% utilization
+        duration: "3600s" # 1 hour
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "600s" # 10 minutes
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance_id"

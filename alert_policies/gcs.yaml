@@ -1,0 +1,96 @@
+---
+# GCS Security: IAM Policy Change Detected
+- display_name: "GCS: IAM Policy Change Detected (Critical)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** An IAM policy has been changed on a GCS bucket.
+      **Impact:** Permissions have been altered for one or more users or service
+      accounts.
+      **Playbook:** [GCP Docs for GCS Audit Logging](
+      https://cloud.google.com/storage/docs/audit-logging)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "IAM policy change detected"
+      condition_matched_log:
+        filter: |
+          resource.type="gcs_bucket"
+          AND (protoPayload.methodName="storage.setIamPermissions" 
+               OR protoPayload.methodName="storage.buckets.setIamPolicy")
+        label_extractors:
+          bucket_name: "EXTRACT(resource.labels.bucket_name)"
+          method: "EXTRACT(protoPayload.methodName)"
+          principal: "EXTRACT(protoPayload.authenticationInfo.principalEmail)"
+  alert_strategy:
+    auto_close: "259200s" # 3 days
+    notification_rate_limit:
+      period: "300s" # 5 minutes between notifications
+
+---
+# GCS Availability: High Server Error Rate (5xx)
+- display_name: "GCS: High Server Error Rate (Critical)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** The rate of server-side 5xx errors for GCS requests has exceeded
+      1% over the last 10 minutes.
+      **Impact:** Applications are unable to read or write objects due to a
+      Google-side issue. This indicates a service disruption.
+      **Playbook:** [GCP Docs for GCS Status Codes](
+      https://cloud.google.com/storage/docs/json_api/v1/status-codes)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "5xx error ratio > 1% for 10m"
+      condition_monitoring_query_language:
+        query: |
+          fetch gcs_bucket
+          | {
+              metric 'storage.googleapis.com/api/request_count'
+              | filter (metric.response_code == "500" || metric.response_code == "501"
+                  || metric.response_code == "502" || metric.response_code == "503"
+                  || metric.response_code == "504")
+              | align rate(1m)
+              | group_by [resource.bucket_name], [errors: sum(val())];
+              metric 'storage.googleapis.com/api/request_count'
+              | align rate(1m)
+              | group_by [resource.bucket_name], [total: sum(val())]
+            }
+          | join
+          | value [error_ratio: val(0) / val(1)]
+          | condition val() > 0.01         # Error ratio > 1%
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+
+---
+# GCS Performance: High API Latency
+- display_name: "GCS: High P99 Total Latency (Warning)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** The 99th percentile for total request latency has exceeded 2
+      seconds.
+      **Impact:** Applications that read from or write to GCS are experiencing
+      significant performance degradation.
+      **Playbook:** [GCP Docs for GCS Performance](
+      https://cloud.google.com/storage/docs/request-rate-and-access-distribution)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "P99 total latency > 2s for 15m"
+      condition_threshold:
+        filter: 'metric.type="storage.googleapis.com/api/total_latencies" AND resource.type="gcs_bucket"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 2000 # 2 seconds (ms)
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_99"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.bucket_name"
+              - "metric.label.method"

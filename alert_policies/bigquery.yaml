@@ -1,0 +1,131 @@
+---
+# BigQuery Performance: Slow Query Execution
+- display_name: "BigQuery: Slow Query Execution (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The 99th percentile for BigQuery query execution time has exceeded 2 minutes.
+      **Impact:** Data analytics jobs and dashboards may be slow to load. This indicates a performance degradation.
+      **Playbook:** [GCP Docs for Optimizing Query Performance](https://cloud.google.com/bigquery/docs/query-optimization-compute)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "P99 execution time > 2m for 10m"
+      condition_threshold:
+        filter: 'metric.type="bigquery.googleapis.com/query/execution_times" AND resource.type="bigquery_project"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 120000 # 2 minutes (ms)
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_99"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "metric.label.user_email"
+
+---
+- display_name: "BigQuery: Slow Query Execution (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The 99th percentile for BigQuery query execution time has exceeded 5 minutes.
+      **Impact:** Critical data pipelines may be blocked or timing out. Dashboards are likely unusable.
+      **Playbook:** [GCP Docs for Optimizing Query Performance](https://cloud.google.com/bigquery/docs/query-optimization-compute)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "P99 execution time > 5m for 5m"
+      condition_threshold:
+        filter: 'metric.type="bigquery.googleapis.com/query/execution_times" AND resource.type="bigquery_project"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 300000 # 5 minutes (ms)
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_PERCENTILE_99"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "metric.label.user_email"
+
+---
+# BigQuery Errors: Failed Queries
+- display_name: "BigQuery: Failed Queries Detected (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** One or more queries have failed in the last 10 minutes.
+      **Impact:** Automated jobs or user queries are not completing successfully. This could impact data freshness and availability.
+      **Playbook:** [GCP Docs for Troubleshooting BigQuery Errors](https://cloud.google.com/bigquery/docs/troubleshooting-errors)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Sum of failed queries > 0"
+      condition_threshold:
+        filter: 'metric.type="bigquery.googleapis.com/query/count" AND resource.type="bigquery_project" AND metric.label.error_code!="" AND metric.label.statement_type!="SCRIPT"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0 # Any failed query
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_SUM"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "metric.label.user_email"
+
+---
+# BigQuery Usage: High Number of In-Flight Jobs
+- display_name: "BigQuery: High Number of In-Flight Jobs (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The number of concurrent in-flight jobs is over 80, approaching the default project quota of 100.
+      **Impact:** New queries may be queued instead of executing immediately, slowing down all users and services.
+      **Playbook:** [GCP Docs for BigQuery Quotas & Limits](https://cloud.google.com/bigquery/quotas)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "In-flight jobs > 80 for 5m"
+      condition_threshold:
+        filter: 'metric.type="bigquery.googleapis.com/job/num_in_flight" AND resource.type="bigquery_project"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 80 # More than 80 jobs
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MAX"
+            cross_series_reducer: "REDUCE_MAX"
+
+---
+# BigQuery Cost Control: Excessive Bytes Scanned by User
+- display_name: "BigQuery: Excessive Bytes Scanned by User (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** A single user has scanned more than 1TB of data in the last hour.
+      **Impact:** This may lead to unexpected high costs. Investigate the queries run by this user.
+      **Playbook:** [GCP Docs for BigQuery Cost Controls](https://cloud.google.com/bigquery/docs/best-practices-costs)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Bytes scanned by user > 1TB in 1h"
+      condition_threshold:
+        filter: 'metric.type="bigquery.googleapis.com/query/scanned_bytes" AND resource.type="global"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 1099511627776 # 1 TB in bytes
+        duration: "3600s" # 1 hour
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "3600s" # 1 hour
+            per_series_aligner: "ALIGN_SUM"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "metric.label.user_email"

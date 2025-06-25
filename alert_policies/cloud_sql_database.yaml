@@ -1,0 +1,118 @@
+---
+# Cloud SQL Availability: Instance Down
+# This is the most critical alert for Cloud SQL.
+- display_name: "Cloud SQL: Instance Down (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** A Cloud SQL instance is not reporting as 'up'.
+      **Impact:** The database is down and completely unavailable. All client
+      applications connecting to this instance will fail.
+      **Playbook:** [GCP Docs for Diagnosing Cloud SQL Issues](
+      https://cloud.google.com/sql/docs/mysql/diagnosing-issues)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Instance 'up' status < 1 for 10m"
+      condition_threshold:
+        filter: 'metric.type="cloudsql.googleapis.com/database/up" AND resource.type="cloudsql_database"'
+        comparison: "COMPARISON_LT" # Less than threshold
+        threshold_value: 1 # Not up
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MAX"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.database_id"
+
+---
+# Cloud SQL Saturation: High CPU and Memory Utilization
+- display_name: "Cloud SQL: High CPU Utilization (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The CPU utilization for a Cloud SQL instance has exceeded 80%
+      for over 15 minutes.
+      **Impact:** Query performance is likely degrading. The instance may be
+      struggling to keep up with the current load.
+      **Playbook:** [GCP Docs for Diagnosing High CPU](
+      https://cloud.google.com/sql/docs/mysql/diagnosing-issues#cpu-utilization)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "CPU utilization > 80% for 15m"
+      condition_threshold:
+        filter: 'metric.type="cloudsql.googleapis.com/database/cpu/utilization" AND resource.type="cloudsql_database"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.8 # 80% CPU usage
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.database_id"
+
+---
+- display_name: "Cloud SQL: High Memory Utilization (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The memory utilization for a Cloud SQL instance has exceeded
+      95% for over 10 minutes.
+      **Impact:** The instance is at high risk of crashing due to out-of-memory
+      errors. Performance is severely degraded as the database may be unable to
+      cache effectively.
+      **Playbook:** [GCP Docs for Diagnosing High Memory](
+      https://cloud.google.com/sql/docs/mysql/diagnosing-issues#memory-usage)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Memory utilization > 95% for 10m"
+      condition_threshold:
+        filter: 'metric.type="cloudsql.googleapis.com/database/memory/utilization" AND resource.type="cloudsql_database"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.95 # 95% memory usage
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.database_id"
+
+---
+# Cloud SQL Saturation: Low Disk Space
+- display_name: "Cloud SQL: Low Disk Space (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The disk utilization for a Cloud SQL instance has exceeded 80%.
+      **Impact:** The instance is approaching its storage limit. If it runs out of
+      space, writes will fail, and the database may become read-only.
+      **Playbook:** [GCP Docs for Managing Disk Space](
+      https://cloud.google.com/sql/docs/mysql/instance-settings#storage-settings)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Disk utilization > 80% for 1h"
+      condition_threshold:
+        filter: 'metric.type="cloudsql.googleapis.com/database/disk/utilization" AND resource.type="cloudsql_database"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.8 # 80% disk usage
+        duration: "3600s" # 1 hour
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "600s" # 10 minutes
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.database_id"

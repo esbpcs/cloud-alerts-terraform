@@ -1,0 +1,127 @@
+---
+# Redis Saturation: High Memory Usage (Critical)
+- display_name: "Redis: High Memory Usage (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The memory usage ratio for a Redis instance has exceeded 90%.
+      **Impact:** The instance is nearly full. Key evictions are highly likely,
+      which can lead to data loss and application errors. Performance will be
+      severely degraded.
+      **Playbook:** [GCP Docs for Redis Memory Management](
+      https://cloud.google.com/memorystore/docs/redis/memory-management-best-practices)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Memory usage ratio > 90% for 10m"
+      condition_threshold:
+        filter: 'metric.type="redis.googleapis.com/stats/memory/usage_ratio" AND resource.type="redis_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.9 # 90% usage
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MAX"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.instance_id"
+
+---
+# Redis Health: Key Evictions Detected (Critical)
+- display_name: "Redis: Key Evictions Detected (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The Redis instance is evicting keys to make space for new
+      writes.
+      **Impact:** This is a clear sign that the instance is full and undersized
+      for its workload. Data is being lost from the cache, which will increase
+      latency and load on backend databases.
+      **Playbook:** [GCP Docs for Redis Eviction Policies](
+      https://cloud.google.com/memorystore/docs/redis/memory-management-best-practices#eviction-policies)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Sum of evicted keys > 0"
+      condition_threshold:
+        filter: 'metric.type="redis.googleapis.com/stats/evicted_keys" AND resource.type="redis_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0 # Any key evicted
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_DELTA"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.instance_id"
+
+---
+# Redis Effectiveness: Low Cache Hit Ratio (Warning)
+- display_name: "Redis: Low Cache Hit Ratio (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The cache hit ratio has dropped below 80%.
+      **Impact:** The cache is not serving its purpose effectively. Most requests
+      are missing the cache and hitting the backend database, increasing latency
+      and cost.
+      **NOTE:** The 80% threshold is a general starting point and should be tuned
+      based on your application's specific needs and baseline performance.
+      **Playbook:** [GCP Docs for Redis Metrics](
+      https://cloud.google.com/memorystore/docs/redis/viewing-metrics-and-alerts)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Cache hit ratio < 80% for 15m"
+      condition_monitoring_query_language:
+        query: |
+          fetch redis_instance
+          | {
+              metric 'redis.googleapis.com/stats/keyspace_hits'
+              | align rate(1m)
+              | group_by [resource.instance_id], [hits: sum(val())];
+              metric 'redis.googleapis.com/stats/keyspace_misses'
+              | align rate(1m)
+              | group_by [resource.instance_id], [misses: sum(val())]
+            }
+          | join
+          | value [hit_ratio: val(0) / (val(0) + val(1))]
+          | condition val() < 0.8            # Hit ratio below 80%
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+
+---
+# Redis Performance: Blocked Clients (Critical)
+- display_name: "Redis: Blocked Clients Detected (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** One or more clients are blocked, waiting on a long-running
+      Redis command.
+      **Impact:** Because Redis is single-threaded, a blocked client can prevent
+      all other clients from executing commands, effectively halting the service
+      and causing widespread application timeouts.
+      **Playbook:** [Redis Docs on Blocked Clients](
+      https://redis.io/docs/manual/sentinel/#blocked-clients)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Max blocked clients > 0"
+      condition_threshold:
+        filter: 'metric.type="redis.googleapis.com/clients/blocked" AND resource.type="redis_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0 # Any blocked client
+        duration: "120s" # 2 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MAX"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.instance_id"

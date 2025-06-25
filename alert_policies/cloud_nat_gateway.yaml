@@ -1,0 +1,82 @@
+---
+# Cloud NAT Availability: Allocation Failures
+- display_name: "Cloud NAT: Allocation Failed (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The Cloud NAT gateway is unable to allocate NAT IP addresses and
+      ports for new outbound connections.
+      **Impact:** New outbound connections from resources using this NAT will fail.
+      This can happen if the NAT runs out of available ports.
+      **Playbook:** [GCP Docs for NAT Troubleshooting](
+      https://cloud.google.com/nat/docs/troubleshooting)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "NAT allocation failure detected"
+      condition_threshold:
+        filter: 'metric.type="router.googleapis.com/nat/nat_allocation_failed" AND resource.type="nat_gateway"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0 # Any allocation failure
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+
+---
+# Cloud NAT Utilization: High Port Usage
+- display_name: "Cloud NAT: High Port Usage (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The port usage for a NAT gateway has exceeded 80%.
+      **Impact:** The gateway is approaching its limit for concurrent connections.
+      If usage continues to rise, it will lead to allocation failures.
+      **Playbook:** [GCP Docs for NAT Troubleshooting](
+      https://cloud.google.com/nat/docs/troubleshooting)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Port usage > 80% for 15m"
+      condition_threshold:
+        filter: 'metric.type="router.googleapis.com/nat/port_usage" AND resource.type="nat_gateway"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0.8 # 80% port usage
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.gateway_name"
+
+---
+# Cloud NAT Errors: Dropped Packets
+- display_name: "Cloud NAT: Dropped Packets Detected (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** Outbound packets are being dropped by the NAT gateway due to a
+      lack of resources.
+      **Impact:** This is an active confirmation of connection failures. It
+      directly corresponds to the `nat_allocation_failed` metric.
+      **Playbook:** [GCP Docs for NAT Troubleshooting](
+      https://cloud.google.com/nat/docs/troubleshooting)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Sum of sent packets dropped > 0"
+      condition_threshold:
+        filter: 'metric.type="router.googleapis.com/nat/sent_packets_dropped_count" AND resource.type="nat_gateway"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0 # Any dropped packets
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_SUM"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.gateway_name"

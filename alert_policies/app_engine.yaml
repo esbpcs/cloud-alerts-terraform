@@ -1,0 +1,116 @@
+---
+# App Engine Health: High Server Error (5xx) Rate
+- display_name: "App Engine: High Server Error Rate (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The rate of 5xx server-side errors has exceeded 1% of requests over the last 10 minutes.
+      **Impact:** A significant portion of user requests are failing due to application-level errors (e.g., crashes, exceptions). The service is unhealthy.
+      **Playbook:** [GCP Docs for App Engine Error Reporting](https://cloud.google.com/error-reporting/docs/setup/app-engine)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "5xx error ratio > 1% for 10m"
+      condition_monitoring_query_language:
+        query: |
+          fetch gae_app
+          | {
+              metric 'appengine.googleapis.com/http/server/response_count'
+              | filter metric.response_code >= 500 && metric.response_code < 600
+              | align rate(1m)
+              | group_by [resource.project_id],
+                  [errors: sum(val())];
+              metric 'appengine.googleapis.com/http/server/response_count'
+              | align rate(1m)
+              | group_by [resource.project_id],
+                  [total: sum(val())]
+            }
+          | join
+          | value [error_ratio: val(0) / val(1)]
+          | condition val() > 0.01    # Alert if error_ratio > 1%
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+
+---
+# App Engine Flex CPU Utilization Alerts
+- display_name: "App Engine Flex: High CPU Utilization (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** CPU utilization on App Engine Flex has exceeded 80% for over 10 minutes.
+      **Impact:** Application performance may be degraded, and response times may increase.
+      **Playbook:** [GCP Docs for App Engine Flex Metrics](https://cloud.google.com/appengine/docs/flexible/python/monitoring-and-debugging-an-instance)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "CPU utilization > 80% for 10m"
+      condition_threshold:
+        filter: 'metric.type="appengine.googleapis.com/flex/cpu/utilization" AND resource.type="gae_app"'
+        comparison: "COMPARISON_GT" # greater than threshold
+        threshold_value: 0.8 # 80% CPU usage
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute windows
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.service_id"
+              - "resource.label.version_id"
+
+---
+# App Engine Standard Memory Usage Alerts
+- display_name: "App Engine: High Memory Usage (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** Memory usage on an App Engine instance has exceeded 90% for over 5 minutes.
+      **Impact:** The instance is at high risk of out-of-memory errors, which can cause instance restarts and service unavailability.
+      **Playbook:** [GCP Docs for App Engine Standard Metrics](https://cloud.google.com/appengine/docs/standard/python3/runtime-memory-cache)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Memory usage > 90% for 5m"
+      condition_threshold:
+        filter: 'metric.type="appengine.googleapis.com/system/memory/usage" AND resource.type="gae_app"'
+        comparison: "COMPARISON_GT" # greater than threshold
+        threshold_value: 0.9 # 90% memory usage
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute windows
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.service_id"
+              - "resource.label.version_id"
+---
+# App Engine Availability Alert
+- display_name: "App Engine: No Instances Running (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** There have been zero running instances detected for an App Engine service for over 5 minutes.
+      **Impact:** The service is likely down and unable to serve any traffic, resulting in a complete outage for that service. This is expected if a service is intentionally scaled to zero.
+      **Playbook:** [GCP Docs on App Engine Instance Management](https://cloud.google.com/appengine/docs/standard/python3/how-instances-are-managed)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Instance count < 1 for 5m"
+      condition_threshold:
+        filter: 'metric.type="appengine.googleapis.com/system/instance_count" AND resource.type="gae_app"'
+        comparison: "COMPARISON_LT" # less than threshold
+        threshold_value: 1 # Fewer than 1 instance
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute windows
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.service_id"
+              - "resource.label.version_id"

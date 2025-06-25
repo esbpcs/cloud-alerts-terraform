@@ -1,0 +1,227 @@
+name: GCP Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      action_type:
+        description: 'Action: "apply" to deploy or "destroy" to remove resources.'
+        required: true
+        type: choice
+        options: [apply, destroy]
+        default: "apply"
+      client_name:
+        description: "Client configuration to use. (Required for plan/deploy)"
+        required: false
+        type: choice
+        options: [esbpcs]
+      branch_ref:
+        description: "Branch, tag, or SHA to checkout. (Defaults to main)"
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
+  actions: read
+
+jobs:
+  validate:
+    name: "Validate Code"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Harden Runner"
+        uses: step-security/harden-runner@v2
+        with: { egress-policy: audit, disable-telemetry: true }
+
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_ref || github.ref }}
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: "Cache Pip dependencies"
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: "Install Python dependencies"
+        run: pip install -r scripts/requirements.txt
+
+      - name: "Validate Alert Policies YAML"
+        run: python scripts/validate_alert_policies.py
+
+      - name: "Setup Terraform"
+        uses: hashicorp/setup-terraform@v3
+
+      - name: "Terraform Init (for validation)"
+        run: terraform init -backend=false
+
+      - name: "Terraform Format Check"
+        run: terraform fmt --check -recursive
+
+      - name: "Setup TFLint"
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Run TFLint"
+        run: |
+          set -e
+          echo "--- Running tflint --init to install plugins ---"
+          tflint --init
+          echo "--- Plugins initialized. Running TFLint scan. ---"
+          tflint --format compact
+
+      - name: "Terraform Validate"
+        run: terraform validate
+
+  plan:
+    name: "Terraform Plan"
+    needs: [validate]
+    if: github.event.inputs.client_name != ''
+    runs-on: ubuntu-latest
+    outputs:
+      plan_exitcode: ${{ steps.plan.outputs.exitcode }}
+      client_name: ${{ steps.parse_tfvars.outputs.CLIENT_NAME }}
+      gcp_wif_provider: ${{ steps.parse_tfvars.outputs.GCP_WIF_PROVIDER }}
+      gcp_sa_email: ${{ steps.parse_tfvars.outputs.GCP_SA_EMAIL }}
+
+    steps:
+      - name: "Harden Runner"
+        uses: step-security/harden-runner@v2
+        with: { egress-policy: audit, disable-telemetry: true }
+
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_ref || github.ref }}
+
+      - name: "Setup Terraform"
+        uses: hashicorp/setup-terraform@v3
+
+      - name: "Cache Terraform providers"
+        uses: actions/cache@v3
+        with:
+          path: .terraform/providers
+          key: ${{ runner.os }}-terraform-${{ hashFiles('.terraform.lock.hcl') }}
+
+      - name: "Get configuration from tfvars"
+        id: parse_tfvars
+        run: |
+          CLIENT_NAME="${{ github.event.inputs.client_name }}"
+          TFVARS_FILE="client_vars/$CLIENT_NAME.tfvars"
+          echo "Using client config: $TFVARS_FILE"
+          if [ ! -f "$TFVARS_FILE" ]; then
+            echo "Error: TFVARS file not found at $TFVARS_FILE"
+            exit 1
+          fi
+          PROJECT_ID=$(grep -E '^\s*gcp_project_id\s*=' "$TFVARS_FILE" | sed -e 's/.*=//' -e 's/"//g' | tr -d '[:space:]')
+          WIF_PROVIDER=$(grep -E '^\s*gcp_workload_identity_provider\s*=' "$TFVARS_FILE" | sed -e 's/.*=//' -e 's/"//g' | tr -d '[:space:]')
+          SA_TEMPLATE=$(grep -E '^\s*gcp_service_account\s*=' "$TFVARS_FILE" | sed -e 's/.*=//' -e 's/"//g' | tr -d '[:space:]')
+          SERVICE_ACCOUNT=$(echo "$SA_TEMPLATE" | sed "s/\${gcp_project_id}/$PROJECT_ID/g")
+          echo "GCP_WIF_PROVIDER=$WIF_PROVIDER" >> $GITHUB_OUTPUT
+          echo "GCP_SA_EMAIL=$SERVICE_ACCOUNT" >> $GITHUB_OUTPUT
+          echo "CLIENT_NAME=$CLIENT_NAME" >> $GITHUB_OUTPUT
+
+      - name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2"
+        with:
+          workload_identity_provider: ${{ steps.parse_tfvars.outputs.GCP_WIF_PROVIDER }}
+          service_account: ${{ steps.parse_tfvars.outputs.GCP_SA_EMAIL }}
+
+      - name: "Terraform Init"
+        run: terraform init -backend-config="prefix=client_vars/${{ steps.parse_tfvars.outputs.CLIENT_NAME }}"
+
+      - name: "Terraform Plan"
+        id: plan
+        run: |
+          ACTION_TYPE="${{ github.event.inputs.action_type }}"
+          PLAN_ARGS="-var-file=client_vars/${{ github.event.inputs.client_name }}.tfvars -out=tfplan -no-color -detailed-exitcode"
+          if [ "$ACTION_TYPE" = "destroy" ]; then
+            terraform plan -destroy $PLAN_ARGS
+          else
+            terraform plan $PLAN_ARGS
+          fi
+        continue-on-error: true
+
+      - name: "Check Plan Status"
+        if: steps.plan.outputs.exitcode == 1
+        run: |
+          echo "::error::Terraform Plan failed. Check the 'Terraform Plan' step logs for details."
+          exit 1
+
+      - name: "Upload Terraform plan artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}
+          path: tfplan
+
+  security-scan:
+    name: "Trivy Security Scan"
+    needs: [validate]
+    if: github.event.inputs.client_name != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Harden Runner"
+        uses: step-security/harden-runner@v2
+        with: { egress-policy: audit, disable-telemetry: true }
+
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_ref || github.ref }}
+
+      - name: "Run Trivy scanner for IaC misconfigurations"
+        uses: aquasecurity/trivy-action@master
+        env:
+          TF_VAR_github_repository: ${{ github.repository }}
+        with:
+          scan-type: "config"
+          scan-ref: "."
+          exit-code: "0"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+          tf-vars: "client_vars/${{ github.event.inputs.client_name }}.tfvars"
+
+  deploy:
+    name: "Deploy Resources"
+    needs: [plan, security-scan]
+    if: success() && needs.plan.outputs.plan_exitcode != '' && (needs.plan.outputs.plan_exitcode == '2' || github.event.inputs.action_type == 'destroy')
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Harden Runner"
+        uses: step-security/harden-runner@v2
+        with: { egress-policy: audit, disable-telemetry: true }
+
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch_ref || github.ref }}
+
+      - name: "Setup Terraform"
+        uses: hashicorp/setup-terraform@v3
+
+      - name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2"
+        with:
+          workload_identity_provider: ${{ needs.plan.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.plan.outputs.gcp_sa_email }}
+
+      - name: "Download Terraform plan artifact"
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}
+
+      - name: "Terraform Init"
+        run: terraform init -backend-config="prefix=client_vars/${{ needs.plan.outputs.client_name }}"
+
+      - name: "Execute Terraform Action"
+        run: terraform apply -auto-approve tfplan

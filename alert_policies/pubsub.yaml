@@ -1,0 +1,120 @@
+---
+# Pub/Sub Health: High Unacknowledged Messages (Backlog)
+- display_name: "Pub/Sub: High Unacknowledged Messages (Warning)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** The number of unacknowledged messages (the backlog) for a
+      subscription has exceeded 1,000 for over 15 minutes.
+      **Impact:** Message processing is delayed. This may be caused by slow,
+      crashing, or under-scaled subscriber applications.
+      **Playbook:** [GCP Docs for Pub/Sub Subscription Monitoring](
+      https://cloud.google.com/pubsub/docs/monitoring)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Backlog size > 1k for 15m"
+      condition_threshold:
+        filter: 'metric.type="pubsub.googleapis.com/subscription/num_outstanding_messages" AND resource.type="pubsub_subscription"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 1000 # More than 1k messages
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.subscription_id"
+
+---
+- display_name: "Pub/Sub: High Unacknowledged Messages (Critical)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** The number of unacknowledged messages (the backlog) for a
+      subscription has exceeded 10,000 for over 10 minutes.
+      **Impact:** Message processing is severely delayed, and there is a high risk
+      of messages expiring before they can be processed.
+      **Playbook:** [GCP Docs for Pub/Sub Subscription Monitoring](
+      https://cloud.google.com/pubsub/docs/monitoring)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Backlog size > 10k for 10m"
+      condition_threshold:
+        filter: 'metric.type="pubsub.googleapis.com/subscription/num_outstanding_messages" AND resource.type="pubsub_subscription"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 10000 # More than 10k messages
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.subscription_id"
+
+---
+# Pub/Sub Health: Oldest Unacknowledged Message
+- display_name: "Pub/Sub: Oldest Message is Stale (Critical)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** The oldest unacknowledged message in a subscription has not
+      been processed for over 30 minutes.
+      **Impact:** Message processing may have stalled completely for this
+      subscription. This is a strong indicator that the subscriber application is
+      down or has stopped pulling messages.
+      **Playbook:** [GCP Docs for Pub/Sub Subscription Monitoring](
+      https://cloud.google.com/pubsub/docs/monitoring)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Oldest unacked message age > 30m"
+      condition_threshold:
+        filter: 'metric.type="pubsub.googleapis.com/subscription/oldest_unacked_message_age" AND resource.type="pubsub_subscription"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 1800 # 30 minutes (seconds)
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MAX"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.subscription_id"
+
+---
+# Pub/Sub Health: Dead-Lettered Messages
+- display_name: "Pub/Sub: Messages Sent to Dead-Letter Topic (Critical)"
+  enabled: true
+  documentation:
+    content: |
+      **Summary:** Messages are being sent to a subscription's dead-letter topic
+      (DLQ).
+      **Impact:** The subscriber application is explicitly failing to process
+      these messages, and they are being sidelined for manual inspection. This
+      indicates persistent errors in message processing logic.
+      **Playbook:** [GCP Docs for Pub/Sub Dead-Lettering](
+      https://cloud.google.com/pubsub/docs/dead-letter-topics)
+    mime_type: "text/markdown"
+  combiner: "OR"
+  conditions:
+    - display_name: "Sum of dead-lettered messages > 0"
+      condition_threshold:
+        filter: 'metric.type="pubsub.googleapis.com/subscription/dead_letter_message_count" AND resource.type="pubsub_subscription"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 0 # Any DLQ message
+        duration: "300s" # 5 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_DELTA"
+            cross_series_reducer: "REDUCE_SUM"
+            group_by_fields:
+              - "resource.label.subscription_id"

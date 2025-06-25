@@ -1,0 +1,153 @@
+---
+# Filestore Saturation: Low Disk Space
+- display_name: "Filestore: Low Disk Space (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The disk space utilization for a Filestore instance has exceeded 80%.
+      **Impact:** The instance is approaching its storage capacity. If it runs out
+      of space, write operations will fail.
+      **Playbook:** [GCP Docs for Filestore Capacity](
+      https://cloud.google.com/filestore/docs/monitoring-instances#capacity-alerts)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Disk space used > 80% for 1h"
+      condition_threshold:
+        filter: 'metric.type="file.googleapis.com/nfs/server/used_bytes_percent" AND resource.type="filestore_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 80 # 80% used
+        duration: "3600s" # 1 hour
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "600s" # 10 minutes
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance_name"
+              - "resource.label.zone"
+
+---
+- display_name: "Filestore: Low Disk Space (Critical)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The disk space utilization for a Filestore instance has exceeded 90%.
+      **Impact:** The instance is critically low on storage. Write failures are
+      imminent.
+      **Playbook:** [GCP Docs for Filestore Capacity](
+      https://cloud.google.com/filestore/docs/monitoring-instances#capacity-alerts)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Disk space used > 90% for 10m"
+      condition_threshold:
+        filter: 'metric.type="file.googleapis.com/nfs/server/used_bytes_percent" AND resource.type="filestore_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 90 # 90% used
+        duration: "600s" # 10 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance_name"
+              - "resource.label.zone"
+
+---
+# Filestore Saturation: Low Inode Count
+# Note: The metric 'file.googleapis.com/nfs/server/used_inodes_percent' may not exist for all Filestore tiers.
+- display_name: "Filestore: Low Inode Count (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The inode utilization for a Filestore instance has exceeded 85%.
+      **Impact:** The instance is approaching its inode limit. If it runs out of
+      inodes, no new files can be created, regardless of available disk space.
+      This is common with workloads that use many small files.
+      **Playbook:** [GCP Docs for Filestore Capacity](
+      https://cloud.google.com/filestore/docs/monitoring-instances#capacity-alerts)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Inode space used > 85% for 1h"
+      condition_threshold:
+        filter: 'metric.type="file.googleapis.com/nfs/server/used_inodes_percent" AND resource.type="filestore_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 85 # 85% inode usage
+        duration: "3600s" # 1 hour
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "600s" # 10 minutes
+            per_series_aligner: "ALIGN_MEAN"
+            cross_series_reducer: "REDUCE_MEAN"
+            group_by_fields:
+              - "resource.label.instance_name"
+              - "resource.label.zone"
+
+---
+# Filestore Performance: High Read/Write Latency
+- display_name: "Filestore: High Max Write Latency (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The maximum write latency has exceeded 100ms.
+      **Impact:** Applications writing to the file share are experiencing
+      performance degradation.
+      **NOTE:** Latency thresholds are highly application-dependent and should be
+      tuned based on your specific workload and SLOs.
+      **Playbook:** [GCP Docs for Filestore Performance](
+      https://cloud.google.com/filestore/docs/performance)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Max write latency > 100ms for 15m"
+      condition_threshold:
+        filter: 'metric.type="file.googleapis.com/nfs/server/average_write_latency" AND resource.type="filestore_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 100 # 100 ms
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MAX"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.instance_name"
+              - "resource.label.zone"
+
+---
+- display_name: "Filestore: High Max Read Latency (Warning)"
+  enabled: true
+  combiner: "OR"
+  documentation:
+    content: |
+      **Summary:** The maximum read latency has exceeded 100ms.
+      **Impact:** Applications reading from the file share are experiencing
+      performance degradation.
+      **NOTE:** Latency thresholds are highly application-dependent and should be
+      tuned based on your specific workload and SLOs.
+      **Playbook:** [GCP Docs for Filestore Performance](
+      https://cloud.google.com/filestore/docs/performance)
+    mime_type: "text/markdown"
+  conditions:
+    - display_name: "Max read latency > 100ms for 15m"
+      condition_threshold:
+        filter: 'metric.type="file.googleapis.com/nfs/server/average_read_latency" AND resource.type="filestore_instance"'
+        comparison: "COMPARISON_GT" # Greater than threshold
+        threshold_value: 100 # 100 ms
+        duration: "900s" # 15 minutes
+        trigger:
+          count: 1
+        aggregations:
+          - alignment_period: "60s" # 1 minute
+            per_series_aligner: "ALIGN_MAX"
+            cross_series_reducer: "REDUCE_MAX"
+            group_by_fields:
+              - "resource.label.instance_name"
+              - "resource.label.zone"
