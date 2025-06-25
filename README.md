@@ -1,4 +1,4 @@
-# GCP (and beyond) Alerting and Monitoring Framework using Terraform
+# GCP Alerting and Monitoring Framework using Terraform
 
 This repository contains a Terraform-based framework for managing Google Cloud Monitoring resources, including alert policies. It uses a modular approach with YAML definitions for alert policies, includes a validation script for quality assurance, and is designed to be deployed via a GitHub Actions CI/CD workflow.
 
