@@ -131,7 +131,7 @@ jobs:
           echo "CLIENT_NAME=$CLIENT_NAME" >> $GITHUB_OUTPUT
 
       - name: "Authenticate to Google Cloud"
-        uses: "google-github-actions/auth@v2"
+        uses: step-security/google-github-auth@v2
         with:
           workload_identity_provider: ${{ steps.parse_tfvars.outputs.GCP_WIF_PROVIDER }}
           service_account: ${{ steps.parse_tfvars.outputs.GCP_SA_EMAIL }}
@@ -210,7 +210,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: "Authenticate to Google Cloud"
-        uses: "google-github-actions/auth@v2"
+        uses: step-security/google-github-auth@v2
         with:
           workload_identity_provider: ${{ needs.plan.outputs.gcp_wif_provider }}
           service_account: ${{ needs.plan.outputs.gcp_sa_email }}
